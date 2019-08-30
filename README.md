@@ -251,11 +251,91 @@ commander 提供了program.command 函数创建子级命令，使用program.comm
     - 如果没有配置executableFile 选项，当执行单独的可执行文件默认的搜索文件规则是，当前文件名，加上command名，在当前脚本文件中搜索。例如当前脚本文件是 index.js ,注册的命令是install 可执行文件方式的command，那么，在当前目录下对应的的可执行文件名字叫 index-install.js, 如果命令是 search 即为index-search.js
     - program 匹配命令时 是自上而下执行的，会执行 所有匹配上的命令， 注意git style command配置选项 isDefault: true 时默认命令会和command 同时匹配, command 不和 arguments 不会同时匹配 但是在处理 没有注册的命令时 arguments 会和 默认命令同时匹配。
     - 命令程序多个匹配 只会发生在非链式调用中， commander 的一个链式调用 表示 一组命令，这一组命令 只会匹配一个， 只有多个链式调用之间 会存在同时匹配的情况
+    
+### help 方法的介绍
++ 自定义help方法
+通过事件监听的方式,监听help 触发，并在help输出之后跟随输出自定的内容 
+    ```js
+    
+    const program = require('commander');
+    // 必须在program.parse 之前执行, 因为node emit help 是瞬间就执行完的
+    program.on('--help', function(){
+        console.log('')
+        console.log('Examples:');
+        console.log('  $ custom-help --help');
+        console.log('  $ custom-help -h');
+    });
+    program.parse(process.argv);
+    ```
++ outputHelp(cb) 方法
+可以输出 help 信息，并不退出当前进程，提供一个回调函数, program 允许函数在显示 help 文档之前执行预处理   
+    ```js
+    const program = require('commander');
+    const colors = require('colors');
+    program.parse(process.argv);
+    if(program.argv.slice(2).length <= 0) {
+        program.outputHelp(make_red);
+    }
+    
+    const make_red = (text) => {
+        return colors.red(text); // 用红色字体显示help 文档
+    }
+    ```
+    
++ helpOption(flags, description)  
+覆盖修改help 默认 flags 和description
+    ```js
+    program
+      .helpOption('-e, --HELP', 'read more information');
+    ```
+
++ help(cb) 方法
+可以输出 help 文档，并立即退出当前进程，提供一个回调函数， program 允许函数在显示 help 文档之前执行预处理  
+    ```js
+    const program = require('commander');
+    const colors = require('colors');
+    program.parse(process.argv);
+    if(program.argv.slice(2).length <= 0) {
+        program.help(make_red);
+    }
+    const make_red = (text) => {
+        return colors.red(text); // 用红色字体显示help 文档
+    }
+    ```
+### 自定义事件监听
+commander 允许监听 命令command 或者 选项设置 option 来执行一些自定义操作.
+```js
+const program = require('commander');
+// 监听某一个已经注册的flag
+program.on('option:flag', () => {
+    console.log(this.flag);
+})
+
+// 匹配空执行
+if(!process.argv.slice(2).length) {
+    program.help();// 输出help 文档并立即退出
+}
+
+// 监听command
+program.on('command:*', (cmdObj) => {
+    const [cmd, envs, command] = cmdObj;
+    if(gitStyleCommands.indexOf(cmd) === -1) {
+        program.outputHelp();
+        console.log(`${chalk.red('Unknown command')} ${chalk.yellow(cmd)}.`)
+        process.exit(1);
+    }
+});
+```
+
+注意:
+1. 只能监听已经注册的flag,
+2. 监听command 回调函数传入的 对象是一个数组 包括 cmd 命令 传入参数数组， 以及commander 对象
+3. command 的事件 不会和 command action注册的事件同时触发，但是会和 git style command 风格的命令同时触发
 ## 完整实践
 
 ```js
 const program = require('commander');
-
+const chalk = require('chalk');
 program.version('1.0.1'); // 程序的版本设置
 
 program
@@ -281,7 +361,9 @@ console.log(program.eval);
 console.log(program.graceTemplate);
 console.log(program.happy);
 console.log(program.I);
-
+program.on('option:verbose', (kiss) => {
+    console.log('option:graceTemplate', kiss);
+})
 
 program
     .command('init <templateName> [envs...]') // 创建命令 <> 必填参数 [] 选填参数 ... 可接收多个
@@ -300,13 +382,44 @@ program
         console.log(cmd); // 命令
         console.log(envs); // 参数 
     }); // 当执行 已经注册的命令时 不会进入 arugments 通配命令中，只会执行对应的命令action
-
+   
 // git style command
 program
     .command('install <templateName>', 'this is git style command') // 默认查找 当前目录的 相关文件 [当前文件名]-install exec-install.js 并执行
     .command('publish <name>', 'this is git style command', { excutableFile: 'execPublish' }) // 当提供配置选项的时候 会执行 excutableFile 指定的文件  
     .command('default <name>', 'this is git style command', { isDefault: true }) // 当不传入命令的时候 或没有匹配到任意，命令时 会搜索 exec-defualt.js 并执行,
-    
+
+// 自定义监听已经注册的 option 选项    
+program.on('option:eval', (eval) => {
+    console.log('option:eval', eval);
+})
+
+program.on('option:graceTemplate', (graceTemplate) => {
+    console.log('option:graceTemplate', graceTemplate);
+})
+
+const gitStyleCommands = [
+    'install',
+    'publish',
+    'default',
+]
+// 自定义监听命令
+program.on('command:*', (cmdObj) => {
+    const [cmd, envs, command] = cmdObj;
+    console.log(cmd, envs);
+    if(gitStyleCommands.indexOf(cmd) === -1) {
+        program.outputHelp();
+        console.log(`${chalk.red('Unknown command')} ${chalk.yellow(cmd)}.`)
+        process.exit(1);
+    }
+})
+
+// 匹配空执行
+if(!process.argv.slice(2).length) {
+    program.help();
+}
+
 program.parse(process.argv);
+
 
 ```

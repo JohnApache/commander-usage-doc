@@ -1,5 +1,5 @@
 const program = require('commander');
-
+const chalk = require('chalk');
 program.version('1.0.1'); // 程序的版本设置
 
 program
@@ -25,7 +25,9 @@ console.log(program.eval);
 console.log(program.graceTemplate);
 console.log(program.happy);
 console.log(program.I);
-
+program.on('option:verbose', (kiss) => {
+    console.log('option:graceTemplate', kiss);
+})
 
 program
     .command('init <templateName> [envs...]') // 创建命令 <> 必填参数 [] 选填参数 ... 可接收多个
@@ -50,5 +52,35 @@ program
     .command('install <templateName>', 'this is git style command') // 默认查找 当前目录的 相关文件 [当前文件名]-install exec-install.js 并执行
     .command('publish <name>', 'this is git style command', { excutableFile: 'execPublish' }) // 当提供配置选项的时候 会执行 excutableFile 指定的文件  
     .command('default <name>', 'this is git style command', { isDefault: true }) // 当不传入命令的时候 或没有匹配到任意，命令时 会搜索 exec-defualt.js 并执行,
-    
+
+// 自定义监听已经注册的 option 选项    
+program.on('option:eval', (eval) => {
+    console.log('option:eval', eval);
+})
+
+program.on('option:graceTemplate', (graceTemplate) => {
+    console.log('option:graceTemplate', graceTemplate);
+})
+
+const gitStyleCommands = [
+    'install',
+    'publish',
+    'default',
+]
+// 自定义监听命令
+program.on('command:*', (cmdObj) => {
+    const [cmd, envs, command] = cmdObj;
+    console.log(cmd, envs);
+    if(gitStyleCommands.indexOf(cmd) === -1) {
+        program.outputHelp();
+        console.log(`${chalk.red('Unknown command')} ${chalk.yellow(cmd)}.`)
+        process.exit(1);
+    }
+})
+
+// 匹配空执行
+if(!process.argv.slice(2).length) {
+    program.help();
+}
+
 program.parse(process.argv);
